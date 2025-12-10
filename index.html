@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Weekly CR Status Dashboard</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background: #f5f5f5; color:#000; transition: background 0.2s, color 0.2s; }
+    body.dark { background:#111; color:#eee; }
+    h1 { margin-bottom: 4px; }
+    body.dark h1 { color:#f5f5f5; }
+    .subtitle { color: #555; margin-bottom: 12px; font-size: 13px; }
+    body.dark .subtitle { color:#aaa; }
+   .top-bar { position:sticky; top:0; z-index:100; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding-bottom:8px; background:#f5f5f5; }
+body.dark .top-bar { background:#111; }
+    .theme-toggle-btn { padding:6px 12px; border-radius:6px; border:1px solid #ccc; background:#fff; font-size:12px; cursor:pointer; }
+    body.dark .theme-toggle-btn { background:#222; border-color:#555; color:#eee; }
+    .container { display: flex; flex-direction: column; gap: 16px; }
+    .panel { background: #fff; padding: 12px 16px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); transition: background 0.2s, box-shadow 0.2s, border-color 0.2s; }
+    body.dark .panel { background:#1a1a1a; box-shadow:none; border:1px solid #333; }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .panel-title { font-weight: bold; font-size: 14px; }
+    body.dark .panel-title { color:#f0f0f0; }
+    .week-label { font-size: 13px; color: #444; }
+    body.dark .week-label { color:#ccc; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 6px 8px; border-bottom: 1px solid #ddd; text-align: left; vertical-align: top; }
+    th { background: #f0f0f0; font-weight: 600; }
+    body.dark th { background:#222; border-bottom-color:#333; color:#eee; }
+    body.dark td { border-bottom-color:#333; }
+    tr.delayed { background:#ffecec; }
+    body.dark tr.delayed { background:#3a1e20; }
+    .status-pill { display:inline-block; padding:2px 6px; border-radius:999px; font-size:11px; font-weight:600; }
+    .status-Inprogress { background:#fff8e1; color:#8a6d00; }
+    .status-Completed { background:#e8f5e9; color:#1b5e20; }
+    .status-Delayed { background:#ffebee; color:#b71c1c; }
+
+    .week-controls { display:flex; justify-content:center; gap:8px; align-items:center; }
+    .week-controls button { padding:6px 12px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer; font-size:13px; }
+    .week-controls button:hover { background:#f0f0f0; }
+    body.dark .week-controls button { background:#222; border-color:#555; color:#eee; }
+    body.dark .week-controls button:hover { background:#333; }
+
+    .charts-row { display:flex; gap:12px; flex-wrap:wrap; }
+    .chart-panel { flex:1 1 300px; min-width:280px; }
+    .chart-wrapper { position:relative; padding-top:4px; }
+    canvas { max-height:260px; }
+
+    .zoom-btn {
+      position:absolute;
+      top:2px;
+      right:2px;
+      width:22px;
+      height:22px;
+      border-radius:50%;
+      border:1px solid #ccc;
+      background:#fff;
+      font-size:11px;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      opacity:0.8;
+    }
+    .zoom-btn:hover { opacity:1; background:#f0f0f0; }
+    body.dark .zoom-btn { background:#222; border-color:#555; color:#eee; }
+    body.dark .zoom-btn:hover { background:#333; }
+
+    .empty-message { font-size:12px; color:#777; padding:8px 0; }
+    body.dark .empty-message { color:#aaa; }
+    .file-input-section { display:flex; align-items:center; gap:8px; font-size:13px; }
+    .file-input-section input[type="file"] { font-size:12px; }
+    .hint { font-size:12px; color:#777; margin-top:4px; }
+    body.dark .hint { color:#aaa; }
+
+    .kpi-row { display:flex; gap:12px; margin-bottom:8px; flex-wrap:wrap; }
+    .kpi-card { flex:1 1 140px; min-width:140px; background:#f9f9f9; border-radius:6px; padding:6px 10px; border:1px solid #e0e0e0; }
+    body.dark .kpi-card { background:#202020; border-color:#333; }
+    .kpi-label { font-size:11px; color:#666; margin-bottom:4px; }
+    .kpi-value { font-size:18px; font-weight:600; }
+    .kpi-subtext { font-size:11px; color:#999; }
+    body.dark .kpi-label { color:#aaa; }
+    body.dark .kpi-subtext { color:#777; }
+
+    #exportBtn { margin-top:8px; padding:8px 16px; border-radius:6px; background:#007bff; color:white; border:none; cursor:pointer; font-size:13px; }
+    #exportBtn:hover { background:#005fcc; }
+    body.dark #exportBtn { background:#1565c0; }
+    body.dark #exportBtn:hover { background:#0d47a1; }
+
+    .report-header { display:flex; flex-direction:column; gap:2px; margin-bottom:10px; border-bottom:1px solid #e0e0e0; padding-bottom:6px; }
+    body.dark .report-header { border-bottom-color:#333; }
+    .report-main-title { font-size:15px; font-weight:500; color:#666; }
+    .report-subtitle { font-size:12px; color:#999; }
+    body.dark .report-main-title { color:#ccc; }
+    body.dark .report-subtitle { color:#888; }
+
+    /* Blur when zoom is active */
+    .blur { filter: blur(4px); }
+
+    /* Zoom overlay */
+    #zoomOverlay {
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.5);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:1000;
+    }
+    #zoomOverlay.visible .zoom-content {
+      transform:scale(1);
+      opacity:1;
+    }
+    .zoom-content {
+      position:relative;
+      background:#fff;
+      border-radius:10px;
+      padding:12px 16px 16px;
+      width:80%;
+      max-width:1000px;
+      box-shadow:0 4px 16px rgba(0,0,0,0.4);
+      transform:scale(0.85);
+      opacity:0;
+      transition:transform 0.2s ease, opacity 0.2s ease;
+    }
+    body.dark .zoom-content { background:#1a1a1a; }
+    #zoomClose {
+      position:absolute;
+      top:6px;
+      right:10px;
+      border:none;
+      background:transparent;
+      font-size:18px;
+      cursor:pointer;
+      color:#666;
+    }
+    body.dark #zoomClose { color:#ccc; }
+    #zoomCanvas { max-height:none; }
+  </style>
+</head>
+<body>
+  <div class="top-bar">
+    <div>
+      <h1>Weekly CR Status</h1>
+      <div class="subtitle">Choose Excel. Dashboard groups by reporting week (Mon–Fri). Use navigation to switch weeks.</div>
+    </div>
+    <button id="themeToggle" class="theme-toggle-btn">Dark mode</button>
+  </div>
+
+  <div class="panel file-input-section">
+    <div><strong>Step 1:</strong> Select CR Excel</div>
+    <input type="file" id="excelFileInput" accept=".xlsx,.xls">
+    <div id="fileStatus" class="hint">No file loaded yet.</div>
+  </div>
+
+  <div class="container" id="pdfArea">
+
+    <div id="reportArea" class="panel">
+      <div class="report-header">
+        <div class="report-main-title">Performance Team Weekly Report</div>
+        <div class="report-subtitle">Doc by Yashwant</div>
+      </div>
+
+      <div class="panel-header">
+        <div class="panel-title">CRs for selected week (ReportingWeekStart)</div>
+        <div class="week-label" id="weekLabel"></div>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label">Total completed this week</div>
+          <div class="kpi-value" id="kpiTotalCompleted">0</div>
+          <div class="kpi-subtext">Mon–Fri, based on completed date</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">On-time completions</div>
+          <div class="kpi-value" id="kpiOnTime">0</div>
+          <div class="kpi-subtext">Completed on / before planned (Mon–Fri)</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Delayed completions</div>
+          <div class="kpi-value" id="kpiDelayed">0</div>
+          <div class="kpi-subtext">Completed after planned (Mon–Fri)</div>
+        </div>
+      </div>
+
+      <div id="tableContainer">
+        <div class="empty-message">Load Excel to see data.</div>
+      </div>
+      <button id="exportBtn">Export to PDF</button>
+    </div>
+
+    <div class="panel week-controls">
+      <button id="prevWeekBtn">&laquo; Last week</button>
+      <span id="currentWeekText"></span>
+      <button id="nextWeekBtn">Next week &raquo;</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Graphical representation</div>
+        <select id="crFilter" class="theme-toggle-btn" style="font-size:12px;">
+          <option value="ALL">All CRs</option>
+        </select>
+      </div>
+      <div class="charts-row">
+        <div class="chart-panel">
+          <div class="chart-wrapper">
+            <button class="zoom-btn" onclick="openZoom('gantt')" title="Zoom chart">⤢</button>
+            <canvas id="ganttChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-panel">
+          <div class="chart-wrapper">
+            <button class="zoom-btn" onclick="openZoom('delay')" title="Zoom chart">⤢</button>
+            <canvas id="delayChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Zoom overlay -->
+  <div id="zoomOverlay">
+    <div class="zoom-content" id="zoomContent">
+      <button id="zoomClose">&times;</button>
+      <canvas id="zoomCanvas"></canvas>
+    </div>
+  </div>
+
+  <script>
+    let crData = [];
+    let currentWeekStart = null;
+    let ganttChart = null;
+    let delayChart = null;
+    let zoomChart = null;
+    let lastTimeline = null;
+    let lastQuality = null;
+    let isDark = false;
+    let selectedCR = "ALL";
+
+    function getField(row, set) {
+      for (const k of Object.keys(row)) {
+        const norm = k.trim().toLowerCase();
+        for (const c of set) if (norm === c) return row[k];
+      }
+      return "";
+    }
+
+    function toDate(v) {
+      if (!v && v !== 0) return null;
+      if (typeof v === "number") {
+        const d = new Date(1899, 11, 30);
+        d.setDate(d.getDate() + v);
+        d.setHours(0, 0, 0, 0);
+        return d;
+      }
+      const d = new Date(v);
+      if (isNaN(d.getTime())) return null;
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
+
+    function getWeekStart(date) {
+      const d = new Date(date);
+      const diff = (d.getDay() === 0 ? -6 : 1) - d.getDay();
+      d.setDate(d.getDate() + diff);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
+
+    function isWeekday(date) {
+      if (!date) return false;
+      const day = date.getDay();
+      return day !== 0 && day !== 6;
+    }
+
+    function fmt(date) {
+      if (!date) return "";
+      return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    }
+
+    function fmtRange(ws) {
+      const e = new Date(ws);
+      e.setDate(e.getDate() + 4);
+      return `${fmt(ws)} to ${fmt(e)}`;
+    }
+
+    function getWeekRows(ws) {
+      return crData.filter(r => {
+        const rw = toDate(r.reportingWeekStart);
+        if (!rw) return false;
+        return rw.getTime() === ws.getTime();
+      });
+    }
+
+    function computeKpi(rows) {
+      let total = 0, delayed = 0, ontime = 0;
+      rows.forEach(r => {
+        const p = toDate(r.plannedDate);
+        const c = toDate(r.completedDate);
+        if (!c || !isWeekday(c)) return;
+        total++;
+        if (p && c > p) delayed++; else ontime++;
+      });
+      return { total, delayed, ontime };
+    }
+
+    function delaySummary(rows) {
+      let d = 0, o = 0;
+      rows.forEach(r => {
+        const p = toDate(r.plannedDate);
+        const c = toDate(r.completedDate);
+        if (!c || !isWeekday(c) || !p) return;
+        if (c > p) d++; else o++;
+      });
+      return { labels: ["Delayed", "On time"], counts: [d, o] };
+    }
+
+    // Gantt-style data: Mon–Fri timeline span from Monday to planned/completed
+    function timelineData(rows) {
+      const dayMs = 86400000;
+      const labels = [];
+      const plannedSpan = [];
+      const actualSpan = [];
+      const plannedDates = [];
+      const actualDates = [];
+
+      rows.forEach(r => {
+        const p = toDate(r.plannedDate);
+        const c = toDate(r.completedDate);
+        if (!p && !c) return;
+
+        labels.push(r.crNumber || r.owner || "");
+
+        let pSpan = null;
+        if (p) {
+          let off = Math.round((p.getTime() - currentWeekStart.getTime()) / dayMs);
+          if (off < 0) off = 0;
+          if (off > 4) off = 4;
+          pSpan = off + 1;
+        }
+        plannedSpan.push(pSpan);
+        plannedDates.push(p);
+
+        let aSpan = null;
+        if (c && isWeekday(c)) {
+          let off = Math.round((c.getTime() - currentWeekStart.getTime()) / dayMs);
+          if (off < 0) off = 0;
+          if (off > 4) off = 4;
+          aSpan = off + 1;
+        }
+        actualSpan.push(aSpan);
+        actualDates.push(c);
+      });
+
+      return { labels, plannedSpan, actualSpan, plannedDates, actualDates };
+    }
+
+    function renderKpi(rows) {
+      const k = computeKpi(rows);
+      document.getElementById("kpiTotalCompleted").textContent = k.total;
+      document.getElementById("kpiOnTime").textContent = k.ontime;
+      document.getElementById("kpiDelayed").textContent = k.delayed;
+    }
+
+    function renderTable(rows) {
+      const container = document.getElementById("tableContainer");
+      if (!rows.length) {
+        container.innerHTML = `<div class="empty-message">No CRs for this reporting week.</div>`;
+        return;
+      }
+      let html = `<table><thead><tr>
+        <th>CR number</th><th>CR owner</th><th>Status</th>
+        <th>Planned date</th><th>Completed date</th><th>Inputs in case of delay</th>
+      </tr></thead><tbody>`;
+      rows.forEach(r => {
+        const p = toDate(r.plannedDate);
+        const cDate = toDate(r.completedDate);
+        const d = cDate && p && cDate > p && isWeekday(cDate);
+        const s = `status-${(r.status || "").replace(/\s+/g, "")}`;
+        html += `<tr class="${d ? "delayed" : ""}">
+          <td>${r.crNumber || ""}</td>
+          <td>${r.owner || ""}</td>
+          <td><span class="status-pill ${s}">${r.status || ""}</span></td>
+          <td>${fmt(p)}</td>
+          <td>${fmt(cDate)}</td>
+          <td>${r.delayReason || ""}</td>
+        </tr>`;
+      });
+      html += `</tbody></table>`;
+      container.innerHTML = html;
+    }
+
+    function renderCharts(rows) {
+      const ganttCtx = document.getElementById("ganttChart").getContext("2d");
+      const delayCtx = document.getElementById("delayChart").getContext("2d");
+
+      const timeline = timelineData(rows);
+      const quality = delaySummary(rows);
+
+      lastTimeline = timeline;
+      lastQuality = quality;
+
+      if (ganttChart) ganttChart.destroy();
+      if (delayChart) delayChart.destroy();
+
+      const dayNames = ["Mon","Tue","Wed","Thu","Fri"];
+
+      ganttChart = new Chart(ganttCtx, {
+        type: "bar",
+        data: {
+          labels: timeline.labels,
+          datasets: [
+            {
+              label: "Planned timeline",
+              data: timeline.plannedSpan,
+              backgroundColor: "rgba(176,190,197,0.6)",
+              borderColor: "#90a4ae",
+              borderWidth: 1,
+              barPercentage: 0.6,
+              categoryPercentage: 0.7
+            },
+            {
+              label: "Actual timeline",
+              data: timeline.actualSpan,
+              backgroundColor: timeline.actualSpan.map((v, i) => {
+                const p = timeline.plannedDates[i];
+                const c = timeline.actualDates[i];
+                if (!c || !p || !isWeekday(c)) return "#455a64";
+                return c > p ? "#d32f2f" : "#2e7d32";
+              }),
+              borderColor: "#333",
+              borderWidth: 1,
+              barPercentage: 0.4,
+              categoryPercentage: 0.7
+            }
+          ]
+        },
+        options: {
+          indexAxis: "y",
+          responsive: true,
+          plugins: {
+            legend: { position: "bottom", onClick: () => {} },
+            title: { display: true, text: "Planned vs actual timeline (Mon–Fri)" },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const i = ctx.dataIndex;
+                  if (ctx.datasetIndex === 0) {
+                    const p = timeline.plannedDates[i];
+                    return "Planned: " + (p ? fmt(p) : "N/A");
+                  } else {
+                    const p = timeline.plannedDates[i];
+                    const c = timeline.actualDates[i];
+                    if (!c) return "Completed: N/A";
+                    const dayMs = 86400000;
+                    let diff = null;
+                    if (p) diff = Math.round((c.getTime() - p.getTime()) / dayMs);
+                    let info = "Completed: " + fmt(c);
+                    if (diff !== null) {
+                      if (diff > 0) info += ` (Delayed ${diff} day(s))`;
+                      else if (diff < 0) info += ` (Early ${Math.abs(diff)} day(s))`;
+                      else info += " (On time)";
+                    }
+                    return info;
+                  }
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              beginAtZero: true,
+              min: 0,
+              max: 5,
+              ticks: {
+                stepSize: 1,
+                callback: value => {
+                  if (value === 0) return "";
+                  const idx = value - 1;
+                  if (idx >= 0 && idx < dayNames.length) return dayNames[idx];
+                  return "";
+                }
+              },
+              title: { display: true, text: "Within reporting week (Mon–Fri)" }
+            },
+            y: { }
+          }
+        }
+      });
+
+      const total = quality.counts.reduce((a, b) => a + b, 0) || 1;
+
+      delayChart = new Chart(delayCtx, {
+        type: "doughnut",
+        data: {
+          labels: quality.labels,
+          datasets: [
+            { data: quality.counts, backgroundColor: ["#d32f2f", "#2e7d32"] }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: "bottom", onClick: () => {} },
+            title: { display: true, text: "On-time vs delayed (Mon–Fri completions)" },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const value = ctx.parsed;
+                  const pct = Math.round((value * 100) / total);
+                  return `${ctx.label}: ${value} (${pct}%)`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function updateCrFilterOptions(rows) {
+      const select = document.getElementById("crFilter");
+      const existing = selectedCR;
+      const set = new Set(rows.map(r => r.crNumber).filter(Boolean));
+      select.innerHTML = '<option value="ALL">All CRs</option>';
+      set.forEach(cr => {
+        const opt = document.createElement("option");
+        opt.value = cr;
+        opt.textContent = cr;
+        select.appendChild(opt);
+      });
+      if (existing !== "ALL" && set.has(existing)) {
+        select.value = existing;
+        selectedCR = existing;
+      } else {
+        select.value = "ALL";
+        selectedCR = "ALL";
+      }
+    }
+
+    function render() {
+      let rows = getWeekRows(currentWeekStart);
+      updateCrFilterOptions(rows);
+      if (selectedCR !== "ALL") {
+        rows = rows.filter(r => (r.crNumber || "") === selectedCR);
+      }
+      document.getElementById("weekLabel").textContent = "Reporting week (Mon–Fri): " + fmtRange(currentWeekStart);
+      document.getElementById("currentWeekText").textContent = fmtRange(currentWeekStart);
+      renderKpi(rows);
+      renderTable(rows);
+      renderCharts(rows);
+    }
+
+    function loadExcel(e) {
+      const f = e.target.files[0];
+      if (!f) return;
+      const status = document.getElementById("fileStatus");
+      status.textContent = "Loading " + f.name + "...";
+
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        const wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
+        const sh = wb.SheetNames[0];
+        const data = XLSX.utils.sheet_to_json(wb.Sheets[sh], { defval: "" });
+        crData = data.map(row => ({
+          crNumber: getField(row, ["cr number", "crnumber", "cr"]),
+          owner: getField(row, ["cr owner", "crowner", "owner"]),
+          status: getField(row, ["status"]),
+          plannedDate: getField(row, ["planned date", "planneddate"]),
+          completedDate: getField(row, ["completed date", "completeddate"]),
+          delayReason: getField(row, ["inputs in case of delay", "delay reason", "reason"]),
+          reportingWeekStart: getField(row, ["reportingweekstart", "reporting weekstart", "reporting week start"])
+        }));
+        currentWeekStart = getWeekStart(new Date());
+        status.textContent = "Loaded " + crData.length + " rows";
+        render();
+      };
+      reader.readAsArrayBuffer(f);
+    }
+
+    function exportPdf() {
+      const area = document.getElementById("pdfArea");
+      html2canvas(area, { scale: 2 }).then(canvas => {
+        const img = canvas.toDataURL("image/png");
+        const pdf = new jspdf.jsPDF("p", "mm", "a4");
+        const width = 190;
+        const height = (canvas.height * width) / canvas.width;
+        pdf.addImage(img, "PNG", 10, 10, width, height);
+
+        const footer = "FOR INTERNAL USE ONLY. DISTRIBUTION IS RESTRICTED TO Atrias.CMS.ATCi.Performance@accenture.com";
+        const pages = pdf.getNumberOfPages();
+        pdf.setFontSize(8);
+        for (let i = 1; i <= pages; i++) {
+          pdf.setPage(i);
+          pdf.text(footer, 10, 290);
+        }
+
+        pdf.save("Weekly_CR_Report.pdf");
+      });
+    }
+
+    function toggleTheme() {
+      isDark = !isDark;
+      document.body.classList.toggle("dark", isDark);
+      const btn = document.getElementById("themeToggle");
+      btn.textContent = isDark ? "Light mode" : "Dark mode";
+    }
+
+    function openZoom(type) {
+      const overlay = document.getElementById("zoomOverlay");
+      const pdfArea = document.getElementById("pdfArea");
+      const canvas = document.getElementById("zoomCanvas");
+      const ctx = canvas.getContext("2d");
+      const content = document.getElementById("zoomContent");
+
+      if (type === "gantt" && !lastTimeline) return;
+      if (type === "delay" && !lastQuality) return;
+
+      if (zoomChart) {
+        zoomChart.destroy();
+        zoomChart = null;
+      }
+
+      // show overlay
+      overlay.style.display = "flex";
+      pdfArea.classList.add("blur");
+      requestAnimationFrame(() => overlay.classList.add("visible"));
+
+      const dayNames = ["Mon","Tue","Wed","Thu","Fri"];
+
+      if (type === "gantt") {
+        const t = lastTimeline;
+        zoomChart = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: t.labels,
+            datasets: [
+              {
+                label: "Planned timeline",
+                data: t.plannedSpan,
+                backgroundColor: "rgba(176,190,197,0.6)",
+                borderColor: "#90a4ae",
+                borderWidth: 1,
+                barPercentage: 0.6,
+                categoryPercentage: 0.7
+              },
+              {
+                label: "Actual timeline",
+                data: t.actualSpan,
+                backgroundColor: t.actualSpan.map((v, i) => {
+                  const p = t.plannedDates[i];
+                  const c = t.actualDates[i];
+                  if (!c || !p || !isWeekday(c)) return "#455a64";
+                  return c > p ? "#d32f2f" : "#2e7d32";
+                }),
+                borderColor: "#333",
+                borderWidth: 1,
+                barPercentage: 0.4,
+                categoryPercentage: 0.7
+              }
+            ]
+          },
+          options: {
+            indexAxis: "y",
+            responsive: true,
+            plugins: {
+              legend: { position: "bottom", onClick: () => {} },
+              title: { display: true, text: "Planned vs actual timeline (zoomed)" },
+              tooltip: {
+                callbacks: {
+                  label: ctx2 => {
+                    const i = ctx2.dataIndex;
+                    if (ctx2.datasetIndex === 0) {
+                      const p = t.plannedDates[i];
+                      return "Planned: " + (p ? fmt(p) : "N/A");
+                    } else {
+                      const p = t.plannedDates[i];
+                      const c = t.actualDates[i];
+                      if (!c) return "Completed: N/A";
+                      const dayMs = 86400000;
+                      let diff = null;
+                      if (p) diff = Math.round((c.getTime() - p.getTime()) / dayMs);
+                      let info = "Completed: " + fmt(c);
+                      if (diff !== null) {
+                        if (diff > 0) info += ` (Delayed ${diff} day(s))`;
+                        else if (diff < 0) info += ` (Early ${Math.abs(diff)} day(s))`;
+                        else info += " (On time)";
+                      }
+                      return info;
+                    }
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                beginAtZero: true,
+                min: 0,
+                max: 5,
+                ticks: {
+                  stepSize: 1,
+                  callback: value => {
+                    if (value === 0) return "";
+                    const idx = value - 1;
+                    if (idx >= 0 && idx < dayNames.length) return dayNames[idx];
+                    return "";
+                  }
+                },
+                title: { display: true, text: "Within reporting week (Mon–Fri)" }
+              },
+              y: { }
+            }
+          }
+        });
+      } else {
+        const q = lastQuality;
+        const total = q.counts.reduce((a,b)=>a+b,0) || 1;
+        zoomChart = new Chart(ctx, {
+          type: "doughnut",
+          data: {
+            labels: q.labels,
+            datasets: [
+              { data: q.counts, backgroundColor: ["#d32f2f", "#2e7d32"] }
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { position: "bottom", onClick: () => {} },
+              title: { display: true, text: "On-time vs delayed (zoomed)" },
+              tooltip: {
+                callbacks: {
+                  label: ctx2 => {
+                    const value = ctx2.parsed;
+                    const pct = Math.round((value * 100) / total);
+                    return `${ctx2.label}: ${value} (${pct}%)`;
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+    }
+
+    function closeZoom() {
+      const overlay = document.getElementById("zoomOverlay");
+      const pdfArea = document.getElementById("pdfArea");
+      overlay.classList.remove("visible");
+      pdfArea.classList.remove("blur");
+      setTimeout(() => { overlay.style.display = "none"; }, 200);
+      if (zoomChart) {
+        zoomChart.destroy();
+        zoomChart = null;
+      }
+    }
+
+    function initZoomHandlers() {
+      document.getElementById("zoomClose").addEventListener("click", closeZoom);
+      document.getElementById("zoomOverlay").addEventListener("click", (e) => {
+        if (e.target.id === "zoomOverlay") closeZoom();
+      });
+    }
+
+    function toggleTheme() {
+      isDark = !isDark;
+      document.body.classList.toggle("dark", isDark);
+      const btn = document.getElementById("themeToggle");
+      btn.textContent = isDark ? "Light mode" : "Dark mode";
+    }
+
+    document.getElementById("excelFileInput").addEventListener("change", loadExcel);
+    document.getElementById("prevWeekBtn").addEventListener("click", () => {
+      currentWeekStart.setDate(currentWeekStart.getDate() - 7);
+      render();
+    });
+    document.getElementById("nextWeekBtn").addEventListener("click", () => {
+      currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+      render();
+    });
+    document.getElementById("exportBtn").addEventListener("click", exportPdf);
+    document.getElementById("themeToggle").addEventListener("click", toggleTheme);
+    document.getElementById("crFilter").addEventListener("change", e => {
+      selectedCR = e.target.value || "ALL";
+      render();
+    });
+
+    initZoomHandlers();
+  </script>
+</body>
+</html>
