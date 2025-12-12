@@ -141,6 +141,11 @@ body.dark .top-bar { background:#111; }
     }
     body.dark #zoomClose { color:#ccc; }
     #zoomCanvas { max-height:none; }
+
+    /* hide elements that should only appear inside PDF export */
+    .pdf-only { display: none !important; }
+    /* when toggled on body, show pdf-only elements for capture */
+    .show-pdf-only .pdf-only { display: block !important; }
   </style>
 </head>
 <body>
@@ -161,7 +166,8 @@ body.dark .top-bar { background:#111; }
   <div class="container" id="pdfArea">
 
     <div id="reportArea" class="panel">
-      <div class="report-header">
+      <!-- Hidden on the portal; shown only for PDF export -->
+      <div class="report-header pdf-only">
         <div class="report-main-title">Performance Team Weekly Report</div>
         <div class="report-subtitle">Doc by Yashwant</div>
       </div>
@@ -236,7 +242,8 @@ body.dark .top-bar { background:#111; }
 
   <script>
     let crData = [];
-    let currentWeekStart = null;
+    // initialize to current week start so controls are safe before file load
+    let currentWeekStart = getWeekStart(new Date());
     let ganttChart = null;
     let delayChart = null;
     let zoomChart = null;
@@ -585,9 +592,18 @@ body.dark .top-bar { background:#111; }
       reader.readAsArrayBuffer(f);
     }
 
-    function exportPdf() {
+    // exportPdf: temporarily reveal .pdf-only items, capture, then hide them again
+    async function exportPdf() {
       const area = document.getElementById("pdfArea");
-      html2canvas(area, { scale: 2 }).then(canvas => {
+
+      // Reveal PDF-only elements for the capture
+      document.body.classList.add("show-pdf-only");
+
+      // allow the browser to paint the revealed elements before capture
+      await new Promise(resolve => requestAnimationFrame(resolve));
+
+      try {
+        const canvas = await html2canvas(area, { scale: 2 });
         const img = canvas.toDataURL("image/png");
         const pdf = new jspdf.jsPDF("p", "mm", "a4");
         const width = 190;
@@ -599,11 +615,15 @@ body.dark .top-bar { background:#111; }
         pdf.setFontSize(8);
         for (let i = 1; i <= pages; i++) {
           pdf.setPage(i);
-          pdf.text(footer, 10, 290);
+          const pageHeight = pdf.internal.pageSize.getHeight();
+          pdf.text(footer, 10, pageHeight - 10);
         }
 
         pdf.save("Weekly_CR_Report.pdf");
-      });
+      } finally {
+        // Always hide PDF-only elements again
+        document.body.classList.remove("show-pdf-only");
+      }
     }
 
     function toggleTheme() {
@@ -767,13 +787,6 @@ body.dark .top-bar { background:#111; }
       document.getElementById("zoomOverlay").addEventListener("click", (e) => {
         if (e.target.id === "zoomOverlay") closeZoom();
       });
-    }
-
-    function toggleTheme() {
-      isDark = !isDark;
-      document.body.classList.toggle("dark", isDark);
-      const btn = document.getElementById("themeToggle");
-      btn.textContent = isDark ? "Light mode" : "Dark mode";
     }
 
     document.getElementById("excelFileInput").addEventListener("change", loadExcel);
