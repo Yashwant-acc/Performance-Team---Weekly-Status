@@ -35,6 +35,20 @@ body.dark .top-bar { background:#111; }
     body.dark td { border-bottom-color:#333; }
     tr.delayed { background:#ffecec; }
     body.dark tr.delayed { background:#3a1e20; }
+	
+	tr.holiday {
+  background: #e3f2fd;
+  font-style: italic;
+}
+body.dark tr.holiday {
+  background: #1e2a38;
+}
+.status-Holiday {
+  background:#bbdefb;
+  color:#0d47a1;
+}
+
+	
     .status-pill { display:inline-block; padding:2px 6px; border-radius:999px; font-size:11px; font-weight:600; }
     .status-Inprogress { background:#fff8e1; color:#8a6d00; }
     .status-Completed { background:#e8f5e9; color:#1b5e20; }
@@ -244,6 +258,7 @@ body.dark .top-bar { background:#111; }
     let crData = [];
     // initialize to current week start so controls are safe before file load
     let currentWeekStart = getWeekStart(new Date());
+	let holidayData = [];
     let ganttChart = null;
     let delayChart = null;
     let zoomChart = null;
@@ -394,20 +409,82 @@ body.dark .top-bar { background:#111; }
         <th>CR number</th><th>CR owner</th><th>Status</th>
         <th>Planned date</th><th>Completed date</th><th>Delay Reason / Any other comments</th>
       </tr></thead><tbody>`;
-      rows.forEach(r => {
-        const p = toDate(r.plannedDate);
-        const cDate = toDate(r.completedDate);
-        const d = cDate && p && cDate > p && isWeekday(cDate);
-        const s = `status-${(r.status || "").replace(/\s+/g, "")}`;
-        html += `<tr class="${d ? "delayed" : ""}">
-          <td>${r.crNumber || ""}</td>
-          <td>${r.owner || ""}</td>
-          <td><span class="status-pill ${s}">${r.status || ""}</span></td>
-          <td>${fmt(p)}</td>
-          <td>${fmt(cDate)}</td>
-          <td>${r.delayReason || ""}</td>
-        </tr>`;
-      });
+      const tableRows = [];
+
+// --- CR rows ---
+rows.forEach(r => {
+  const p = toDate(r.plannedDate);
+  const c = toDate(r.completedDate);
+  const rowDate = c || p; // primary date for ordering
+
+  tableRows.push({
+    date: rowDate,
+    type: "CR",
+    data: r
+  });
+});
+
+// --- Holiday rows ---
+const weekEnd = new Date(currentWeekStart);
+weekEnd.setDate(weekEnd.getDate() + 4);
+
+holidayData.forEach(h => {
+  if (h.date >= currentWeekStart && h.date <= weekEnd) {
+    tableRows.push({
+      date: h.date,
+      type: "HOLIDAY",
+      data: h
+    });
+  }
+});
+
+// --- Sort by date ---
+tableRows.sort((a, b) => {
+  if (!a.date && !b.date) return 0;
+  if (!a.date) return 1;
+  if (!b.date) return -1;
+  return a.date - b.date;
+});
+
+// --- Render rows in order ---
+tableRows.forEach(item => {
+  if (item.type === "CR") {
+    const r = item.data;
+    const p = toDate(r.plannedDate);
+    const cDate = toDate(r.completedDate);
+    const d = cDate && p && cDate > p && isWeekday(cDate);
+    const s = `status-${(r.status || "").replace(/\s+/g, "")}`;
+
+    html += `
+      <tr class="${d ? "delayed" : ""}">
+        <td>${r.crNumber || ""}</td>
+        <td>${r.owner || ""}</td>
+        <td><span class="status-pill ${s}">${r.status || ""}</span></td>
+        <td>${fmt(p)}</td>
+        <td>${fmt(cDate)}</td>
+        <td>${r.delayReason || ""}</td>
+      </tr>
+    `;
+  } else {
+    const h = item.data;
+   html += `
+  <tr class="holiday">
+    <td>${h.name}</td>
+    <td></td>
+    <td>
+      <span class="status-pill status-Holiday">Holiday</span>
+    </td>
+    <td>${fmt(h.date)}</td>
+    <td></td>
+    <td>${h.name}</td>
+  </tr>
+`;
+
+
+  }
+});
+
+	  
       html += `</tbody></table>`;
       container.innerHTML = html;
     }
@@ -592,6 +669,29 @@ body.dark .top-bar { background:#111; }
           delayReason: getField(row, ["inputs in case of delay", "delay reason", "reason"]),
           reportingWeekStart: getField(row, ["reportingweekstart", "reporting weekstart", "reporting week start"])
         }));
+		
+		// -------- HOLIDAYS SHEET (NEW) --------
+holidayData = [];
+
+const holidaySheetName = wb.SheetNames.find(
+  s => s.trim().toLowerCase() === "holidays"
+);
+
+if (holidaySheetName) {
+  const holidayRaw = XLSX.utils.sheet_to_json(
+    wb.Sheets[holidaySheetName],
+    { defval: "" }
+  );
+
+  holidayData = holidayRaw
+    .map(r => ({
+      date: toDate(r["Date"]),
+      name: r["Holiday Name"] || ""
+    }))
+    .filter(h => h.date);
+}
+
+		
         currentWeekStart = getWeekStart(new Date());
         status.textContent = "Loaded " + crData.length + " rows";
         render();
