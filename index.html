@@ -289,9 +289,16 @@ body.dark .top-bar { background:#111; }
     }
 
     function fmt(date) {
-      if (!date) return "";
-      return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-    }
+  if (!date) return "";
+  const d = date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+  const w = date.toLocaleDateString("en-GB", { weekday: "short" });
+  return `${d} (${w})`;
+}
+
 
     function fmtRange(ws) {
       const e = new Date(ws);
@@ -385,7 +392,7 @@ body.dark .top-bar { background:#111; }
       }
       let html = `<table><thead><tr>
         <th>CR number</th><th>CR owner</th><th>Status</th>
-        <th>Planned date</th><th>Completed date</th><th>Inputs in case of delay</th>
+        <th>Planned date</th><th>Completed date</th><th>Delay Reason / Any other comments</th>
       </tr></thead><tbody>`;
       rows.forEach(r => {
         const p = toDate(r.plannedDate);
